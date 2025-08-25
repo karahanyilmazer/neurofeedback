@@ -1,0 +1,53 @@
+dataset:
+  name: run3
+  raw_file: /Users/karahanyilmazer/Coding/python/neuro/data/charite-neurofeedback/ID285/day8/sub-P001_ses-S001_task-task-eo_run-002_eeg.xdf
+cropping:
+  tmin:  10
+  tmax: 385
+filtering:
+  highpass: 1.0
+  lowpass: 40.0
+  notch: null
+channels:
+  bads:
+    - FT9
+    - FT10
+    - P7
+    - P8
+    - T8
+    - TP9
+    - TP10
+  sketchy:
+rereferencing:
+  method: average
+bad_spans:
+  - onset: 5.5
+    duration: 1
+    description: bad_span
+  - onset: 16.5
+    duration: 1
+    description: bad_span
+  - onset: 227
+    duration: 13
+    description: bad_span
+  - onset: 361
+    duration: 2
+    description: bad_span
+ica:
+  n_components: null
+  random_state: 1
+  method: infomax
+  max_iter: auto
+  reject_by_annotation: true
+  fit_params:
+    extended: true
+  rejection_thr: 0.75
+  exclude_components:
+  - 0
+  - 2
+  - 4
+  - 11
+  - 15
+output:
+  save_dir: results/preprocessed/
+  save_format: fif.gz

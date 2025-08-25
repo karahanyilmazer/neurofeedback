@@ -1,0 +1,44 @@
+dataset:
+  name: run1
+  raw_file: /Users/karahanyilmazer/Coding/python/neuro/data/charite-neurofeedback/ID285/day5/080825.xdf
+cropping:
+  tmin: 11.0
+  tmax: 323.0
+filtering:
+  highpass: 1.0
+  lowpass: 40.0
+  notch: null
+channels:
+  bads:
+    - T7
+    - T8
+  sketchy:
+    - F8
+    - FC1
+    - FC2
+    - Fz
+    - Cz
+    - Fp1
+    - Fp2
+rereferencing:
+  method: average
+bad_spans:
+  - onset: 263
+    duration: 5
+    description: bad_span
+ica:
+  n_components: null
+  random_state: 1
+  method: infomax
+  max_iter: auto
+  reject_by_annotation: true
+  fit_params:
+    extended: true
+  rejection_thr: 0.9
+  exclude_components:
+    - 0
+    - 1 # Might include brain signals
+    - 21
+output:
+  save_dir: results/preprocessed/
+  save_format: fif.gz
