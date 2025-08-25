@@ -18,7 +18,7 @@ from utils import (
 )
 
 RUN = "run1"
-RUN = "run2"
+INSPECT = False
 
 # %%
 # Load parameters and data
@@ -28,7 +28,7 @@ raw = load_xdf_as_raw(Path(config["dataset"]["raw_file"]))
 # Add bad span annotations
 add_bad_span_annotations(raw, config.get("bad_spans", []))
 
-inspect_raw(raw)
+inspect_raw(raw) if INSPECT else None
 
 # %%
 # ICA PREPROCESSING
@@ -47,7 +47,7 @@ raw_ica.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
 # Set CAR
 raw_ica = raw_ica.set_eeg_reference(ref_channels="average")
 
-inspect_raw(raw_ica)
+inspect_raw(raw) if INSPECT else None
 
 # %%
 # ICA PROCESSING
@@ -64,10 +64,13 @@ else:
 if config["dataset"]["name"] == "run1":
     ica.exclude.append(1)
 
-plt.close("all")
-ica.plot_components(nrows=4, ncols="auto")
-ica.plot_sources(raw_ica)
-bad_ics = get_artifact_indices(raw_ica, ica, config["ica"]["rejection_thr"])
+if INSPECT:
+    plt.close("all")
+    ica.plot_components(nrows=4, ncols="auto")
+    ica.plot_sources(raw_ica)
+bad_ics = get_artifact_indices(
+    raw_ica, ica, config["ica"]["rejection_thr"], plot=INSPECT
+)
 print(f"Bad ICs: {bad_ics}")
 
 # %%
@@ -98,7 +101,7 @@ if RUN == "run1":
     if len(raw_final.annotations) > 0:
         raw_final.annotations.delete(0)
 
-inspect_raw(raw_final)
+inspect_raw(raw) if INSPECT else None
 
 # %%
 # Store bad channels before interpolation (for reference)
@@ -109,7 +112,7 @@ print(f"Bad channels before interpolation: {original_bads}")
 raw_final.interpolate_bads(reset_bads=True)
 print(f"Bad channels after interpolation: {raw_final.info['bads']} (reset by MNE)")
 print(f"Originally bad channels were: {original_bads}")
-inspect_raw(raw_final)
+inspect_raw(raw) if INSPECT else None
 
 # %%
 # Final inspection and save
