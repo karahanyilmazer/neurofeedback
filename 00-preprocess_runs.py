@@ -47,7 +47,7 @@ raw_ica.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
 # Set CAR
 raw_ica = raw_ica.set_eeg_reference(ref_channels="average")
 
-inspect_raw(raw) if INSPECT else None
+inspect_raw(raw_ica) if INSPECT else None
 
 # %%
 # ICA PROCESSING
@@ -101,7 +101,7 @@ if RUN == "run1":
     if len(raw_final.annotations) > 0:
         raw_final.annotations.delete(0)
 
-inspect_raw(raw) if INSPECT else None
+inspect_raw(raw_final) if INSPECT else None
 
 # %%
 # Store bad channels before interpolation (for reference)
@@ -112,7 +112,7 @@ print(f"Bad channels before interpolation: {original_bads}")
 raw_final.interpolate_bads(reset_bads=True)
 print(f"Bad channels after interpolation: {raw_final.info['bads']} (reset by MNE)")
 print(f"Originally bad channels were: {original_bads}")
-inspect_raw(raw) if INSPECT else None
+inspect_raw(raw_final) if INSPECT else None
 
 # %%
 # Final inspection and save
