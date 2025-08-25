@@ -9,9 +9,9 @@ from mne.preprocessing import ICA
 from mne_icalabel import label_components
 
 
-def load_params(params_file="params.yaml"):
+def load_config(config_file):
     """Load preprocessing parameters from YAML file."""
-    with open(params_file, "r") as f:
+    with open(config_file, "r") as f:
         return yaml.safe_load(f)
 
 

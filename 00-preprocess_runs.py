@@ -10,38 +10,39 @@ from utils import (
     fit_ica,
     get_artifact_indices,
     inspect_raw,
+    load_config,
     load_ica,
-    load_params,
     load_xdf_as_raw,
     save_ica,
     save_preprocessed,
 )
 
+RUN = "run1"
 RUN = "run2"
 
 # %%
 # Load parameters and data
-params = load_params(f"configs/params_{RUN}.yaml")
-raw = load_xdf_as_raw(Path(params["dataset"]["raw_file"]))
+config = load_config(f"configs/config_{RUN}.yaml")
+raw = load_xdf_as_raw(Path(config["dataset"]["raw_file"]))
 
 # Add bad span annotations
-add_bad_span_annotations(raw, params.get("bad_spans", []))
+add_bad_span_annotations(raw, config.get("bad_spans", []))
 
 inspect_raw(raw)
 
 # %%
 # ICA PREPROCESSING
-params = load_params(f"configs/params_{RUN}.yaml")
+config = load_config(f"configs/config_{RUN}.yaml")
 
 # Define bad channels
-raw.info["bads"] = params["channels"]["bads"]
+raw.info["bads"] = config["channels"]["bads"]
 raw_ica = raw.copy()
 
 # Initial filtering and rereferencing for Extended Infomax
 raw_ica.filter(1, 100)
 
 # Crop the beginning and the end of the recording
-raw_ica.crop(params["cropping"]["tmin"], params["cropping"]["tmax"])
+raw_ica.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
 
 # Set CAR
 raw_ica = raw_ica.set_eeg_reference(ref_channels="average")
@@ -50,27 +51,27 @@ inspect_raw(raw_ica)
 
 # %%
 # ICA PROCESSING
-params = load_params(f"configs/params_{RUN}.yaml")
+config = load_config(f"configs/config_{RUN}.yaml")
 
 if os.path.exists(
-    f"{params['output']['save_dir']}/{params['dataset']['name']}_ica.{params['output']['save_format']}"
+    f"{config['output']['save_dir']}/{config['dataset']['name']}_ica.{config['output']['save_format']}"
 ):
-    ica = load_ica(params)
+    ica = load_ica(config)
 else:
-    ica = fit_ica(raw_ica, params["ica"])
-    save_ica(ica, params)
+    ica = fit_ica(raw_ica, config["ica"])
+    save_ica(ica, config)
 
-if params["dataset"]["name"] == "run1":
+if config["dataset"]["name"] == "run1":
     ica.exclude.append(1)
 
 plt.close("all")
 ica.plot_components(nrows=4, ncols="auto")
 ica.plot_sources(raw_ica)
-bad_ics = get_artifact_indices(raw_ica, ica, params["ica"]["rejection_thr"])
+bad_ics = get_artifact_indices(raw_ica, ica, config["ica"]["rejection_thr"])
 print(f"Bad ICs: {bad_ics}")
 
 # %%
-params = load_params(f"configs/params_{RUN}.yaml")
+config = load_config(f"configs/config_{RUN}.yaml")
 
 # Read the Raw again if you have overwritten it
 raw_final = raw.copy()
@@ -84,11 +85,11 @@ if RUN == "run3":
     )
 
 # Final preprocessing
-raw_final.filter(params["filtering"]["highpass"], params["filtering"]["lowpass"])
-if params["filtering"].get("notch"):
-    raw_final.notch_filter(params["filtering"].get("notch"))
-raw_final.crop(params["cropping"]["tmin"], params["cropping"]["tmax"])
-ica.exclude = params["ica"]["exclude_components"]
+raw_final.filter(config["filtering"]["highpass"], config["filtering"]["lowpass"])
+if config["filtering"].get("notch"):
+    raw_final.notch_filter(config["filtering"].get("notch"))
+raw_final.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
+ica.exclude = config["ica"]["exclude_components"]
 raw_final = ica.apply(raw_final)
 raw_final = raw_final.set_eeg_reference(ref_channels="average")
 
@@ -112,6 +113,6 @@ inspect_raw(raw_final)
 
 # %%
 # Final inspection and save
-save_preprocessed(raw_final, params)
+save_preprocessed(raw_final, config)
 
 # %%
