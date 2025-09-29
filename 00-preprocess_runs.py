@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from utils import (
     add_bad_span_annotations,
+    drop_channels,
     fit_ica,
     get_artifact_indices,
     inspect_raw,
@@ -23,7 +24,9 @@ INSPECT = False
 # %%
 # Load parameters and data
 config = load_config(f"configs/config_{RUN}.yaml")
-raw = load_xdf_as_raw(Path(config["dataset"]["raw_file"]))
+
+# Drop unwanted channels
+raw = drop_channels(raw, config["channels"].get("drop", []))
 
 # Add bad span annotations
 add_bad_span_annotations(raw, config.get("bad_spans", []))
