@@ -7,9 +7,58 @@ import mne
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from mne._fiff.pick import _pick_data_channels, pick_info
+from mne.channels.layout import _find_topomap_coords
 from mne.viz.topomap import plot_topomap
 
 from utils import get_colormap
+
+
+def highlight_channels_on_topomap(
+    ax,
+    raw,
+    channel_names,
+    marker="ro",
+    markersize=8,
+    markeredgecolor="white",
+    markeredgewidth=1,
+):
+    """Highlight channels on topomap using exact MNE positioning."""
+
+    # Get all data channel picks and their names
+    all_picks = _pick_data_channels(raw.info, exclude=())
+    all_channel_names = [raw.ch_names[pick] for pick in all_picks]
+
+    # Find which of our requested channels are available
+    available_channels = [ch for ch in channel_names if ch in all_channel_names]
+    if not available_channels:
+        return {}
+
+    # Get indices of only the channels we need
+    needed_indices = [all_channel_names.index(ch) for ch in available_channels]
+    needed_picks = [all_picks[i] for i in needed_indices]
+
+    # Create minimal info object with only needed channels
+    pos_info = pick_info(raw.info, needed_picks)
+    channel_picks = list(range(len(pos_info["chs"])))
+    pos = _find_topomap_coords(pos_info, picks=channel_picks)
+
+    # Plot the channels
+    highlighted = {}
+    for i, ch_name in enumerate(available_channels):
+        pos_xy = pos[i]
+        ax.plot(
+            pos_xy[0],
+            pos_xy[1],
+            marker,
+            markersize=markersize,
+            markeredgecolor=markeredgecolor,
+            markeredgewidth=markeredgewidth,
+        )
+        highlighted[ch_name] = pos_xy
+
+    return highlighted
+
 
 # %%
 # Configuration
@@ -28,8 +77,15 @@ backup_visual = ["PO3", "PO4", "POz", "P1", "P2", "CP1", "CP2"]
 
 
 USE_ZSCORE = True
+VLIM = (None, None)
+VLIM = (-4, 4) if USE_ZSCORE else (0, 1.8)
 CMAP = get_colormap("parula")
-RUNS = {"run1": "Day 5", "run2": "Day 8 (Before NF)", "run3": "Day 8 (After NF)"}
+RUNS = {
+    "run0": "Baseline",
+    "run1": "Day 5",
+    "run2": "Day 8 (Before NF)",
+    "run3": "Day 8 (After NF)",
+}
 
 
 # %%
@@ -51,6 +107,83 @@ def get_available_visual_channels(raw):
 
     print(f"Available visual channels: {visual_present}")
     return visual_present
+
+
+def get_channel_position_robust(raw, channel_name):
+    """
+    Robustly get 2D channel position for topomap plotting.
+
+    Parameters:
+    -----------
+    raw : mne.io.Raw
+        Raw object containing channel information
+    channel_name : str
+        Name of the channel to get position for
+
+    Returns:
+    --------
+    pos : array-like or None
+        2D position [x, y] or None if position cannot be determined
+    """
+    if channel_name not in raw.ch_names:
+        return None
+
+    ch_idx = raw.ch_names.index(channel_name)
+
+    # Method 1: Try from channel info loc field
+    try:
+        if raw.info["chs"][ch_idx]["loc"] is not None:
+            loc = raw.info["chs"][ch_idx]["loc"]
+            if (
+                len(loc) >= 2
+                and not np.isnan(loc[:2]).any()
+                and not np.allclose(loc[:2], 0)
+            ):
+                return loc[:2]
+    except (IndexError, TypeError, KeyError):
+        pass
+
+    # Method 2: Try from montage if available
+    try:
+        montage = raw.info.get_montage()
+        if montage is not None and channel_name in montage.ch_names:
+            ch_montage_idx = montage.ch_names.index(channel_name)
+            # Account for fiducial points in dig
+            dig_idx = ch_montage_idx + 3  # Skip nasion, lpa, rpa
+            if dig_idx < len(montage.dig):
+                dig_point = montage.dig[dig_idx]
+                if dig_point["r"] is not None and len(dig_point["r"]) >= 2:
+                    return dig_point["r"][:2]
+    except (IndexError, TypeError, KeyError, AttributeError):
+        pass
+
+    # Method 3: Try to get from topomap transformation
+    try:
+        picks = mne.pick_types(raw.info, eeg=True)
+        if ch_idx in picks:
+            pos_array, outlines = mne.viz.topomap._prepare_topomap_plot(
+                raw.info, "eeg", sphere=None
+            )
+            pick_idx = np.where(picks == ch_idx)[0]
+            if len(pick_idx) > 0 and pick_idx[0] < len(pos_array):
+                return pos_array[pick_idx[0]]
+    except Exception:
+        pass
+
+    # Method 4: Try standard montage as fallback
+    try:
+        standard_montage = mne.channels.make_standard_montage("standard_1020")
+        if channel_name in standard_montage.ch_names:
+            ch_montage_idx = standard_montage.ch_names.index(channel_name)
+            dig_idx = ch_montage_idx + 3  # Skip fiducials
+            if dig_idx < len(standard_montage.dig):
+                dig_point = standard_montage.dig[dig_idx]
+                if dig_point["r"] is not None and len(dig_point["r"]) >= 2:
+                    return dig_point["r"][:2]
+    except Exception:
+        pass
+
+    return None
 
 
 def compute_alpha_power_all(raw):
@@ -89,6 +222,7 @@ def compute_alpha_power_all(raw):
 # Load all available preprocessed files
 # fif_files = list(preprocessed_dir.glob("*_raw.fif.gz"))
 fif_files = [
+    Path("results/preprocessed/run0_raw.fif.gz"),
     Path("results/preprocessed/run1_raw.fif.gz"),
     Path("results/preprocessed/run2_raw.fif.gz"),
     Path("results/preprocessed/run3_raw.fif.gz"),
@@ -130,8 +264,6 @@ all_visual_channels = sorted(list(all_visual_channels))
 
 # %%
 # Create comparison plots
-vlim = (-3, 3)
-# vlim = (None, None)
 
 # Colorbar placement
 COLORBAR_MODE = "shared"  # "shared" or "individual"
@@ -148,25 +280,28 @@ for i, (run_name, data) in enumerate(alpha_data.items()):
         data["raw"].info,
         cmap=CMAP,
         contours=False,
-        vlim=vlim,
+        vlim=VLIM,
         show=False,
         axes=ax,
     )
     topomaps.append(im)
 
-    # Highlight visual channels
-    for ch in data["channels"]:
-        if ch in data["raw"].ch_names:
-            ch_idx = data["raw"].ch_names.index(ch)
-            pos = data["raw"].info["chs"][ch_idx]["loc"][:2]
-            ax.plot(
-                pos[0],
-                pos[1],
-                "ro",
-                markersize=8,
-                markeredgecolor="white",
-                markeredgewidth=1,
-            )
+    # Highlight visual channels using exact topomap positioning
+    highlighted = highlight_channels_on_topomap(
+        ax,
+        data["raw"],
+        data["channels"],
+        marker="ro",
+        markersize=8,
+        markeredgecolor="white",
+        markeredgewidth=1,
+    )
+
+    # Report any channels that couldn't be positioned
+    missing_channels = set(data["channels"]) - set(highlighted.keys())
+    if missing_channels:
+        print(f"Warning: Could not position channels {missing_channels} in {run_name}")
+
     ax.set_title(f"{run_name}")
 
 # Colorbar options

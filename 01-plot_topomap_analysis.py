@@ -24,8 +24,8 @@ freq_bands = [
 
 # Plot settings
 use_zscore = True
-vlim = (-2, 2) if use_zscore else (0, 1.2)
 vlim = (None, None)
+vlim = (-4, 4) if use_zscore else (0, 1.8)
 n_fft_multiplier = 2.5  # seconds for FFT window
 cmap = get_colormap("parula")
 
@@ -94,6 +94,7 @@ def create_topomap_plots(raw, run_name, use_zscore=False):
 # Find all preprocessed files
 # fif_files = list(preprocessed_dir.glob("*_raw.fif.gz"))
 fif_files = [
+    Path("results/preprocessed/run0_raw.fif.gz"),
     Path("results/preprocessed/run1_raw.fif.gz"),
     Path("results/preprocessed/run2_raw.fif.gz"),
     Path("results/preprocessed/run3_raw.fif.gz"),
@@ -131,11 +132,6 @@ if len(figures) > 1:
 
     plot_idx = 1
     for i, run_name in enumerate(figures):
-        # Reload the raw data for this run
-        # fif_file = next(f for f in fif_files if run_name in f.stem)
-        # raw = mne.io.read_raw_fif(fif_file, preload=True, verbose=False)
-        # fs = raw.info["sfreq"]
-
         raw = raws[i]
         fs = raw.info["sfreq"]
 
