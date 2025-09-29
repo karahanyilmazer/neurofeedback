@@ -7,23 +7,25 @@ import matplotlib.pyplot as plt
 
 from utils import (
     add_bad_span_annotations,
+    apply_notch_filter,
     drop_channels,
     fit_ica,
     get_artifact_indices,
     inspect_raw,
     load_config,
+    load_data_as_raw,
     load_ica,
-    load_xdf_as_raw,
     save_ica,
     save_preprocessed,
 )
 
-RUN = "run1"
-INSPECT = False
+RUN = "run0"
+INSPECT = True
 
 # %%
 # Load parameters and data
 config = load_config(f"configs/config_{RUN}.yaml")
+raw = load_data_as_raw(Path(config["dataset"]["raw_file"]), config=config)
 
 # Drop unwanted channels
 raw = drop_channels(raw, config["channels"].get("drop", []))
@@ -43,6 +45,7 @@ raw_ica = raw.copy()
 
 # Initial filtering and rereferencing for Extended Infomax
 raw_ica.filter(1, 100)
+# raw_ica = apply_notch_filter(raw_ica, config["filtering"].get("notch"))
 
 # Crop the beginning and the end of the recording
 raw_ica.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
@@ -71,6 +74,7 @@ if INSPECT:
     plt.close("all")
     ica.plot_components(nrows=4, ncols="auto")
     ica.plot_sources(raw_ica)
+
 bad_ics = get_artifact_indices(
     raw_ica, ica, config["ica"]["rejection_thr"], plot=INSPECT
 )
@@ -92,8 +96,7 @@ if RUN == "run3":
 
 # Final preprocessing
 raw_final.filter(config["filtering"]["highpass"], config["filtering"]["lowpass"])
-if config["filtering"].get("notch"):
-    raw_final.notch_filter(config["filtering"].get("notch"))
+# raw_final = apply_notch_filter(raw_final, config["filtering"].get("notch"))
 raw_final.crop(config["cropping"]["tmin"], config["cropping"]["tmax"])
 ica.exclude = config["ica"]["exclude_components"]
 raw_final = ica.apply(raw_final)
