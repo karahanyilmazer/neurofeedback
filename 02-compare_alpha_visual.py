@@ -417,7 +417,22 @@ if len(alpha_data) >= 2:
 
 # %%
 # 4. Detailed channel analysis
+
+# Add Cz channel to the DataFrame if present in each run
+cz_rows = []
+for run_name, data in alpha_data.items():
+    raw = data["raw"]
+    names = raw.ch_names
+    if "Cz" in names:
+        cz_power = data["power_all"][names.index("Cz")]
+        cz_rows.append({"Run": run_name, "Channel": "Cz", "Alpha_Power": cz_power})
+
+# Append Cz rows to df
+if cz_rows:
+    df = pd.concat([df, pd.DataFrame(cz_rows)])
+
 fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+
 
 # Create a heatmap of alpha power by channel and run
 if len(df) > 0:
@@ -426,8 +441,15 @@ if len(df) > 0:
     pivot_df = pivot_df.reindex(
         columns=pivot_df.columns.tolist()[:-2] + pivot_df.columns.tolist()[-2:][::-1]
     )
+    # Ensure Cz is at the bottom
+    idx = [ch for ch in pivot_df.index if ch != "Cz"]
+    if "Cz" in pivot_df.index:
+        idx.append("Cz")
+    pivot_df = pivot_df.reindex(idx)
     sns.heatmap(pivot_df, annot=True, fmt=".4f", cmap=CMAP, ax=ax)
-    ax.set_title("Alpha Power Heatmap (z-score): Visual Channels Across Days")
+    ax.set_title(
+        "Alpha Power Heatmap (z-score): Visual Channels (incl. Cz) Across Days"
+    )
     ax.set_ylabel("Channel")
     ax.set_xlabel("Day")
 
