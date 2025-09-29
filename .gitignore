@@ -270,3 +270,4 @@ $RECYCLE.BIN/
 
 # Project-specific files
 results/
+qeeg/patient_qeeq_results/
