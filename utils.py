@@ -15,38 +15,97 @@ def load_config(config_file):
         return yaml.safe_load(f)
 
 
-def load_xdf_as_raw(xdf_file, montage_file="CLA-32.bvef", head_size=0.075):
+def load_data_as_raw(data_file, config=None):
     """
-    Load XDF file and convert to MNE Raw object with montage.
+    Load XDF or EEG file and convert to MNE Raw object with montage.
+    Supports multiple EEG file formats.
 
     Parameters:
     -----------
-    xdf_file : str or Path
-        Path to XDF file
-    montage_file : str
-        Path to montage file (default: "CLA-32.bvef")
-    head_size : float
-        Head size for montage (default: 0.075)
+    data_file : str or Path
+        Path to data file (.xdf, .eeg, .set, .vhdr, .bdf, .edf, etc.)
+    config : dict or None
+        Configuration dictionary containing montage settings
 
     Returns:
     --------
-    mne.io.Raw : Raw object with data and montage
+    mne.io.Raw : Raw object with data and optionally montage
     """
-    print(f"Loading {xdf_file}")
 
-    # Load XDF data
-    streams, header = pyxdf.load_xdf(xdf_file)
-    data = streams[0]["time_series"].T
-    fs = streams[0]["info"]["nominal_srate"][0]
+    data_file = Path(data_file)
+    print(f"Loading {data_file}")
 
-    # Montage and info
-    montage = mne.channels.read_custom_montage(montage_file, head_size=head_size)
-    channels = montage.ch_names[2:]  # Exclude REF and GND
-    info = mne.create_info(ch_names=channels, sfreq=fs, ch_types="eeg")
-    info.set_montage(montage)
+    if config and "montage" in config:
+        montage_file = config["montage"].get("montage_file")
+        head_size = config["montage"].get("head_size", 0.075)
 
-    raw = mne.io.RawArray(data[: len(channels)], info)
-    print(f"Loaded data with shape: {data.shape} and sampling rate: {fs} Hz")
+    # Determine file type and load accordingly
+    if data_file.suffix.lower() == ".xdf":
+        # Load XDF data
+        streams, header = pyxdf.load_xdf(data_file)
+        data = streams[0]["time_series"].T
+        fs = streams[0]["info"]["nominal_srate"][0]
+
+        # For XDF files, we need a montage file
+        if not montage_file:
+            raise ValueError(
+                "XDF files require a montage file to be specified in config"
+            )
+
+        # Montage and info
+        montage = mne.channels.read_custom_montage(montage_file, head_size=head_size)
+        channels = montage.ch_names[2:]  # Exclude REF and GND
+        info = mne.create_info(ch_names=channels, sfreq=fs, ch_types="eeg")
+        info.set_montage(montage)
+
+        raw = mne.io.RawArray(data[: len(channels)], info)
+        print(f"Loaded XDF data with shape: {data.shape} and sampling rate: {fs} Hz")
+
+    elif data_file.suffix.lower() == ".vhdr":
+        # Load BrainVision data
+        raw = mne.io.read_raw_brainvision(data_file, preload=True)
+        raw.drop_channels(config["channels"].get("drop", []))
+        print(
+            f"Loaded BrainVision data with {len(raw.ch_names)} channels and sampling rate: {raw.info['sfreq']} Hz"
+        )
+
+        montage = mne.channels.make_standard_montage("easycap-M1")
+        raw.set_montage(montage)
+
+    else:
+        raise ValueError(
+            f"Unsupported file format: {data_file.suffix}. "
+            f"Supported formats: .xdf, .vhdr"
+        )
+
+    return raw
+
+
+def apply_notch_filter(raw, notch_freqs):
+    """
+    Apply notch filter to Raw object if notch frequencies are specified.
+
+    Parameters:
+    -----------
+    raw : mne.io.Raw
+        Raw object to apply notch filter to
+    notch_freqs : float, list, or None
+        Notch frequencies to filter. Can be single frequency, list of frequencies, or None
+
+    Returns:
+    --------
+    mne.io.Raw : Raw object with notch filter applied
+    """
+    if notch_freqs is None:
+        print("No notch filtering specified")
+        return raw
+
+    # Convert single frequency to list for consistent handling
+    if isinstance(notch_freqs, (int, float)):
+        notch_freqs = [notch_freqs]
+
+    print(f"Applying notch filter at {notch_freqs} Hz")
+    raw.notch_filter(notch_freqs)
 
     return raw
 
@@ -72,17 +131,6 @@ def inspect_raw(raw, modify_original=False):
     raw.compute_psd().plot()  # PSD doesn't modify the raw object
 
 
-def inspect_raw_safe(raw):
-    """
-    Inspect raw data without risk of modifying bad channels.
-    Uses a copy for plotting to prevent accidental modifications.
-    """
-    plt.close("all")
-    raw_copy = raw.copy()
-    raw_copy.plot(scalings="auto")
-    raw.compute_psd().plot()
-
-
 def add_bad_span_annotations(raw, bad_spans):
     """
     Add bad span annotations to Raw object.
@@ -103,6 +151,39 @@ def add_bad_span_annotations(raw, bad_spans):
         raw.set_annotations(
             raw.annotations + ann if raw.annotations is not None else ann
         )
+
+
+def drop_channels(raw, channels_to_drop):
+    """
+    Drop specified channels from Raw object.
+
+    Parameters:
+    -----------
+    raw : mne.io.Raw
+        Raw object to drop channels from
+    channels_to_drop : list
+        List of channel names to drop
+
+    Returns:
+    --------
+    mne.io.Raw : Raw object with channels dropped
+    """
+    if not channels_to_drop:
+        return raw
+
+    # Find channels that actually exist in the data
+    existing_channels_to_drop = [ch for ch in channels_to_drop if ch in raw.ch_names]
+
+    if existing_channels_to_drop:
+        print(f"Dropping channels: {existing_channels_to_drop}")
+        raw = raw.drop_channels(existing_channels_to_drop)
+        print(f"Remaining channels: {len(raw.ch_names)}")
+    else:
+        print(
+            f"None of the specified channels to drop {channels_to_drop} were found in the data"
+        )
+
+    return raw
 
 
 def get_artifact_indices(raw, ica, threshold=0.9, plot=True, verbose=True):
@@ -712,26 +793,3 @@ def list_available_colormaps():
         print("Palettable not available")
 
     return available_colormaps
-
-
-def print_colormap_examples():
-    """Print examples of how to use different colormaps."""
-    print("Colormap Usage Examples:")
-    print("========================")
-    print("# Custom colormap")
-    print("cmap = get_colormap('parula')")
-    print()
-    print("# Palettable colormaps (case-insensitive)")
-    print("cmap = get_colormap('Blues_9')        # ColorBrewer")
-    print("cmap = get_colormap('berlin')         # Scientific diverging")
-    print("cmap = get_colormap('hawaii')         # Scientific sequential")
-    print("cmap = get_colormap('rdbu_11')        # Case-insensitive")
-    print()
-    print("# Matplotlib colormaps")
-    print("cmap = get_colormap('viridis')")
-    print("cmap = get_colormap('turbo')")
-    print()
-    print("# List all available colormaps")
-    print("colormaps = list_available_colormaps()")
-    print("for category, names in colormaps.items():")
-    print("    print(f'{category}: {names[:5]}...')  # Show first 5")
