@@ -1,6 +1,9 @@
 dataset:
   name: run1
   raw_file: /Users/karahanyilmazer/Coding/python/neuro/data/charite-neurofeedback/ID285/day5/080825.xdf
+montage:
+  montage_file: /Users/karahanyilmazer/Coding/python/neuro/neurofeedback/CLA-32.bvef
+  head_size: 0.075
 cropping:
   tmin: 11.0
   tmax: 323.0

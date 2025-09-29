@@ -1,6 +1,9 @@
 dataset:
   name: run2
   raw_file: /Users/karahanyilmazer/Coding/python/neuro/data/charite-neurofeedback/ID285/day8/sub-P001_ses-S001_task-rest-eo_run-001_eeg.xdf
+montage:
+  montage_file: /Users/karahanyilmazer/Coding/python/neuro/neurofeedback/CLA-32.bvef
+  head_size: 0.075
 cropping:
   tmin: 2
   tmax: 212
