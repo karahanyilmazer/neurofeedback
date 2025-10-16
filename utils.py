@@ -64,7 +64,8 @@ def load_data_as_raw(data_file, config=None):
     elif data_file.suffix.lower() == ".vhdr":
         # Load BrainVision data
         raw = mne.io.read_raw_brainvision(data_file, preload=True)
-        raw.drop_channels(config["channels"].get("drop", []))
+        if config["channels"].get("drop", None):
+            raw.drop_channels(config["channels"].get("drop", None))
         print(
             f"Loaded BrainVision data with {len(raw.ch_names)} channels and sampling rate: {raw.info['sfreq']} Hz"
         )
