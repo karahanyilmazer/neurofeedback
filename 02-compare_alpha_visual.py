@@ -61,13 +61,14 @@ def highlight_channels_on_topomap(
 
 
 # %%
+band = "alpha"
 # Configuration
 preprocessed_dir = Path("results/preprocessed")
-output_dir = Path("results/alpha_comparison")
+output_dir = Path(f"results/{band}_comparison")
 output_dir.mkdir(parents=True, exist_ok=True)
 
-# Alpha frequency band
-alpha_band = {"name": "Alpha", "fmin": 8, "fmax": 12}
+# Define frequency bands
+freq_bands = {"delta": (1, 4), "theta": (4, 8), "alpha": (8, 12), "beta": (13, 30)}
 n_fft_multiplier = 2.5
 
 # Visual/occipital channels (typical locations for alpha activity)
@@ -186,26 +187,26 @@ def get_channel_position_robust(raw, channel_name):
     return None
 
 
-def compute_alpha_power_all(raw):
-    """Compute alpha power for all channels, z-score, then select visual channels."""
-    # Compute PSD for alpha band for all channels
+def compute_band_power_all(raw):
+    """Compute band power for all channels, z-score, then select visual channels."""
+    # Compute PSD for band band for all channels
     psd = raw.compute_psd(
         method="welch",
-        fmin=alpha_band["fmin"],
-        fmax=alpha_band["fmax"],
+        fmin=freq_bands[band][0],
+        fmax=freq_bands[band][1],
         n_fft=int(raw.info["sfreq"] * n_fft_multiplier),
     )
 
     # Get power data (channels x frequencies)
     power_data = psd.get_data()
 
-    # Average across frequencies to get mean alpha power per channel
-    alpha_power_all = power_data.mean(axis=-1)
+    # Average across frequencies to get mean band power per channel
+    band_power_all = power_data.mean(axis=-1)
 
     # Z-score normalization across all channels
     if USE_ZSCORE:
-        alpha_power_all = (alpha_power_all - np.mean(alpha_power_all)) / np.std(
-            alpha_power_all
+        band_power_all = (band_power_all - np.mean(band_power_all)) / np.std(
+            band_power_all
         )
 
     # Get available visual channels
@@ -213,9 +214,9 @@ def compute_alpha_power_all(raw):
     # Indices of visual channels in raw
     visual_indices = [raw.ch_names.index(ch) for ch in available_visual]
     # Select visual channel powers
-    alpha_power_visual = alpha_power_all[visual_indices]
+    band_power_visual = band_power_all[visual_indices]
 
-    return alpha_power_visual, available_visual, alpha_power_all
+    return band_power_visual, available_visual, band_power_all
 
 
 # %%
@@ -233,8 +234,8 @@ for f in fif_files:
     print(f"  - {f.name}")
 
 # %%
-# Process each file and collect alpha power data
-alpha_data = {}
+# Process each file and collect band power data
+band_data = {}
 all_visual_channels = set()
 
 
@@ -245,19 +246,21 @@ for fif_file in sorted(fif_files):
     # Load data
     raw = mne.io.read_raw_fif(fif_file, preload=True, verbose=False)
 
-    # Compute alpha power for all channels, then select visual channels
-    alpha_power_visual, visual_ch, alpha_power_all = compute_alpha_power_all(raw)
+    # Compute band power for all channels, then select visual channels
+    band_power_visual, visual_ch, band_power_all = compute_band_power_all(raw)
     all_visual_channels.update(visual_ch)
 
     # Store data
-    alpha_data[run_name] = {
-        "power": alpha_power_visual,
+    band_data[run_name] = {
+        "power": band_power_visual,
         "channels": visual_ch,
         "raw": raw,  # Keep for topographic plots
-        "power_all": alpha_power_all,  # For topomap
+        "power_all": band_power_all,  # For topomap
     }
 
-    print(f"  Mean visual alpha power: {alpha_power_visual.mean():.4f} (z-score)")
+    print(
+        f"  Mean visual {band.lower()} band power: {band_power_visual.mean():.4f} (z-score)"
+    )
     print(f"  Visual channels: {visual_ch}")
 
 all_visual_channels = sorted(list(all_visual_channels))
@@ -268,11 +271,11 @@ all_visual_channels = sorted(list(all_visual_channels))
 # Colorbar placement
 COLORBAR_MODE = "shared"  # "shared" or "individual"
 
-fig, axes = plt.subplots(1, len(alpha_data), figsize=(5 * len(alpha_data), 6))
+fig, axes = plt.subplots(1, len(band_data), figsize=(5 * len(band_data), 6))
 topomaps = []
 
 # 1. Topographic comparison
-for i, (run_name, data) in enumerate(alpha_data.items()):
+for i, (run_name, data) in enumerate(band_data.items()):
     ax = axes[i]
     power_all = data["power_all"]
     im, cm = plot_topomap(
@@ -313,7 +316,7 @@ if COLORBAR_MODE == "individual":
             orientation="horizontal",
             fraction=0.046,
             pad=0.15,
-            label="Alpha Power (z-score)",
+            label=f"{band.capitalize()} Power (z-score)",
         )
 elif COLORBAR_MODE == "shared":
     # Shared colorbar below all axes
@@ -323,60 +326,71 @@ elif COLORBAR_MODE == "shared":
         orientation="horizontal",
         fraction=0.07,
         pad=0.15,
-        label="Alpha Power (z-score)",
+        label=f"{band.capitalize()} Power (z-score)",
     )
 
-fig.suptitle("Alpha Power (z-score)\n(Visual channels marked in red)")
+fig.suptitle(f"{band.capitalize()} Power (z-score)\n(Visual channels marked in red)")
 # plt.tight_layout(rect=[0, 0.05, 1, 0.95])
 plt.savefig(
-    output_dir / "alpha_topographic_comparison.png", dpi=300, bbox_inches="tight"
+    output_dir / f"{band}_topographic_comparison.png", dpi=300, bbox_inches="tight"
 )
 plt.show()
 
 # %%
-# 2. Bar plot comparison of average alpha power per run
+# 2. Bar plot comparison of average band power per run
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
 
 # Overall comparison (violin plot for z-scored data)
-run_names = list(alpha_data.keys())
+run_names = list(band_data.keys())
 df_data = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     for ch, power in zip(data["channels"], data["power"]):
-        df_data.append({"Run": run_name, "Channel": ch, "Alpha_Power": power})
+        df_data.append(
+            {"Run": run_name, "Channel": ch, f"{band.capitalize()}_Power": power}
+        )
 df = pd.DataFrame(df_data)
 
 if len(df) > 0:
     sns.violinplot(
-        data=df, x="Run", y="Alpha_Power", ax=ax1, inner="box", palette="pastel"
+        data=df,
+        x="Run",
+        y=f"{band.capitalize()}_Power",
+        ax=ax1,
+        inner="box",
+        palette="pastel",
     )
-    ax1.set_ylabel("Alpha Power (z-score)")
-    ax1.set_title("Distribution of Alpha Power (z-score) in Visual Channels")
+    ax1.set_ylabel(f"{band.capitalize()} Power (z-score)")
+    ax1.set_title(
+        f"Distribution of {band.capitalize()} Power (z-score) in Visual Channels"
+    )
     ax1.grid(axis="y", alpha=0.3)
 
 # Channel-wise comparison
 # Create a DataFrame for easier plotting
 df_data = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     for ch, power in zip(data["channels"], data["power"]):
-        df_data.append({"Run": run_name, "Channel": ch, "Alpha_Power": power})
+        df_data.append(
+            {"Run": run_name, "Channel": ch, f"{band.capitalize()}_Power": power}
+        )
 
 df = pd.DataFrame(df_data)
 
 # Box plot by channel
 if len(df) > 0:
-    sns.boxplot(data=df, x="Channel", y="Alpha_Power", hue="Run", ax=ax2)
-    ax2.set_title("Alpha Power Distribution by Channel (z-score)")
-    ax2.set_ylabel("Alpha Power (z-score)")
+    sns.boxplot(data=df, x="Channel", y=f"{band.capitalize()}_Power", hue="Run", ax=ax2)
+    ax2.set_title(f"{band.capitalize()} Power Distribution by Channel (z-score)")
+    ax2.set_ylabel(f"{band.capitalize()} Power (z-score)")
     ax2.tick_params(axis="x", rotation=45)
     ax2.grid(axis="y", alpha=0.3)
 
 plt.tight_layout()
-plt.savefig(output_dir / "alpha_power_comparison.png", dpi=300, bbox_inches="tight")
+plt.savefig(output_dir / f"{band}_power_comparison.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # %%
 # 3. Statistical comparison
-if len(alpha_data) >= 2:
+if len(band_data) >= 2:
     print("\n" + "=" * 50)
     print("STATISTICAL COMPARISON")
     print("=" * 50)
@@ -389,8 +403,8 @@ if len(alpha_data) >= 2:
     ]
 
     for r1, r2 in run_pairs:
-        power1 = alpha_data[r1]["power"]
-        power2 = alpha_data[r2]["power"]
+        power1 = band_data[r1]["power"]
+        power2 = band_data[r2]["power"]
 
         # Perform t-test
         t_stat, p_value = stats.ttest_ind(power1, power2)
@@ -411,7 +425,7 @@ if len(alpha_data) >= 2:
 
     print("\nEffect Sizes (Cohen's d):")
     for r1, r2 in run_pairs:
-        d = cohens_d(alpha_data[r1]["power"], alpha_data[r2]["power"])
+        d = cohens_d(band_data[r1]["power"], band_data[r2]["power"])
         magnitude = "small" if abs(d) < 0.5 else "medium" if abs(d) < 0.8 else "large"
         print(f"  {r1} vs {r2}: d = {d:.3f} ({magnitude})")
 
@@ -420,12 +434,14 @@ if len(alpha_data) >= 2:
 
 # Add Cz channel to the DataFrame if present in each run
 cz_rows = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     raw = data["raw"]
     names = raw.ch_names
     if "Cz" in names:
         cz_power = data["power_all"][names.index("Cz")]
-        cz_rows.append({"Run": run_name, "Channel": "Cz", "Alpha_Power": cz_power})
+        cz_rows.append(
+            {"Run": run_name, "Channel": "Cz", f"{band.capitalize()}_Power": cz_power}
+        )
 
 # Append Cz rows to df
 if cz_rows:
@@ -434,9 +450,11 @@ if cz_rows:
 fig, ax = plt.subplots(1, 1, figsize=(12, 8))
 
 
-# Create a heatmap of alpha power by channel and run
+# Create a heatmap of band power by channel and run
 if len(df) > 0:
-    pivot_df = df.pivot(index="Channel", columns="Run", values="Alpha_Power")
+    pivot_df = df.pivot(
+        index="Channel", columns="Run", values=f"{band.capitalize()}_Power"
+    )
     # Rearrange columns to only swap the last two columns
     pivot_df = pivot_df.reindex(
         columns=pivot_df.columns.tolist()[:-2] + pivot_df.columns.tolist()[-2:][::-1]
@@ -448,34 +466,36 @@ if len(df) > 0:
     pivot_df = pivot_df.reindex(idx)
     sns.heatmap(pivot_df, annot=True, fmt=".4f", cmap=CMAP, ax=ax)
     ax.set_title(
-        "Alpha Power Heatmap (z-score): Visual Channels (incl. Cz) Across Days"
+        f"{band.capitalize()} Power Heatmap (z-score): Visual Channels (incl. Cz) Across Days"
     )
     ax.set_ylabel("Channel")
     ax.set_xlabel("Day")
 
 plt.tight_layout()
-plt.savefig(output_dir / "alpha_heatmap.png", dpi=300, bbox_inches="tight")
+plt.savefig(output_dir / f"{band}_heatmap.png", dpi=300, bbox_inches="tight")
 plt.show()
 
 # %%
 # 5. Summary report
 print("\n" + "=" * 60)
-print("ALPHA ACTIVITY COMPARISON SUMMARY")
+print(f"{band.upper()} ACTIVITY COMPARISON SUMMARY")
 print("=" * 60)
 
-print(f"\nAnalysis performed on {len(alpha_data)} runs")
+print(f"\nAnalysis performed on {len(band_data)} runs")
 print(f"Visual channels analyzed: {all_visual_channels}")
-print(f"Alpha frequency band: {alpha_band['fmin']}-{alpha_band['fmax']} Hz")
+print(
+    f"{band.capitalize()} frequency band: {freq_bands[band][0]}-{freq_bands[band][1]} Hz"
+)
 
 
-print(f"\nMean Alpha Power (z-score) by Day:")
-for run_name in sorted(alpha_data.keys()):
-    power = alpha_data[run_name]["power"]
+print(f"\nMean {band.capitalize()} Power (z-score) by Day:")
+for run_name in sorted(band_data.keys()):
+    power = band_data[run_name]["power"]
     print(f"  {run_name}: {power.mean():.4f} ± {power.std():.4f} (z-score)")
 
 # Find the most active visual channel per day
 print("\nMost Active Visual Channel by Day (z-score):")
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     max_idx = np.argmax(data["power"])
     max_channel = data["channels"][max_idx]
     max_power = data["power"][max_idx]
@@ -493,7 +513,7 @@ visual_plus_cz = set(all_visual_channels) | {"Cz"}
 # Gather all z-scores and names for visual channels + Cz for all runs
 all_vis_scores = []
 all_vis_names = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     raw = data["raw"]
     scores = data["power_all"]
     names = raw.ch_names
@@ -512,7 +532,7 @@ print("=" * 60)
 # Find highest and lowest visual cortex channels (across all runs)
 visual_only = set(all_visual_channels)
 visual_scores = {ch: [] for ch in visual_only}
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     raw = data["raw"]
     scores = data["power_all"]
     names = raw.ch_names
@@ -535,7 +555,7 @@ print(
 
 # Always include Cz
 cz_scores = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     raw = data["raw"]
     names = raw.ch_names
     if "Cz" in names:
@@ -548,7 +568,7 @@ for run_name, data in alpha_data.items():
 max_ch_values = []
 min_ch_values = []
 days = []
-for run_name, data in alpha_data.items():
+for run_name, data in band_data.items():
     raw = data["raw"]
     ch_names = raw.ch_names
     if max_visual_ch in ch_names:
@@ -586,8 +606,8 @@ ax.plot(
     label=f"Cz (NF Channel)",
     color=colors[2],
 )
-ax.set_title("Alpha Power (z-score) over Visual Cortex and Cz")
-ax.set_ylabel("Alpha Power (z-score)")
+ax.set_title(f"{band.capitalize()} Power (z-score) over Visual Cortex and Cz")
+ax.set_ylabel(f"{band.capitalize()} Power (z-score)")
 ax.set_xlabel("Day")
 ax.legend()
 plt.tight_layout()
@@ -621,7 +641,5 @@ for i in range(len(days)):
         print(f"  Difference: {vals1 - vals2:.4f}")
 
 print(f"\nAll plots saved to: {output_dir}")
-
-# %%
 
 # %%
