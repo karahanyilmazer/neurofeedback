@@ -1,6 +1,6 @@
 dataset:
   name: run0
-  raw_file: /Users/karahanyilmazer/Coding/python/neuro/data/charite-neurofeedback/ID285/day0/qEEG_AntoniaGuzman_openeyes.vhdr
+  raw_file: /Users/karahanyilmazer/Coding/data/cnt-neurofeedback/ID285/day0/qEEG_AntoniaGuzman_openeyes.vhdr
 montage:
   montage_file: null
   head_size: null
